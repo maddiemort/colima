@@ -71,7 +71,7 @@ func (d *defaultWatcher) Watch(ctx context.Context, dirs []string, mod chan<- mo
 
 				// send modification event
 				log.Tracef("sending event %s for %s", e.Event().String(), path)
-				mod <- modEvent{path: path, FileMode: stat.Mode()}
+				mod <- modEvent{path: path, Event: e.Event(), FileMode: stat.Mode()}
 			}
 		}
 	}(ctx, c, mod)
