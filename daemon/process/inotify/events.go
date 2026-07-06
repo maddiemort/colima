@@ -116,7 +116,7 @@ func (f *inotifyProcess) handleEvents(ctx context.Context, watcher dirWatcher) e
 			log.Infof("syncing inotify %s event for %s ", ev.Event.String(), ev.path)
 			switch ev.Event {
 			case notify.Write:
-				if err := f.guest.RunQuiet("touch", "-m", ev.path); err != nil {
+				if err := f.guest.RunQuiet("touch", "-mr", ev.path, ev.path); err != nil {
 					log.Trace(fmt.Errorf("error syncing inotify event: %w", err))
 				}
 			default:
