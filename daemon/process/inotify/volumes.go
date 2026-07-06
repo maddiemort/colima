@@ -142,7 +142,6 @@ func (f *inotifyProcess) fetchVolumes(cmdArgs ...string) ([]string, error) {
 			}
 		}
 
-		vols = omitChildrenDirectories(vols)
 		log.Tracef("found volumes %+v", vols)
 	}
 
