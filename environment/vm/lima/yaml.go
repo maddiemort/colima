@@ -378,10 +378,13 @@ func newConf(ctx context.Context, conf config.Config) (l limaconfig.Config, err 
 			limaconfig.Mount{Location: "~", Writable: true},
 		)
 	} else {
-		// overlapping mounts are problematic in Lima https://github.com/lima-vm/lima/issues/302
-		if err = checkOverlappingMounts(conf.Mounts); err != nil {
-			err = fmt.Errorf("overlapping mounts not supported: %w", err)
-			return
+		if l.MountType == limaconfig.REVSSHFS {
+			// overlapping mounts are problematic in Lima when using the sshfs mount type:
+			// https://github.com/lima-vm/lima/issues/302
+			if err = checkOverlappingMounts(conf.Mounts); err != nil {
+				err = fmt.Errorf("overlapping mounts not supported: %w", err)
+				return
+			}
 		}
 
 		l.Mounts = append(l.Mounts, limaconfig.Mount{Location: config.CacheDir(), Writable: false})
