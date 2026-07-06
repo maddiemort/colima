@@ -17,6 +17,11 @@ type modEvent struct {
 
 func (m modEvent) Mode() string { return fmt.Sprintf("%o", m.FileMode) }
 
+type cachedEventKey struct {
+	path string
+	notify.Event
+}
+
 func (f *inotifyProcess) handleEvents(ctx context.Context, watcher dirWatcher) error {
 	log := f.log
 	log.Trace("begin inotify event handler")
@@ -44,7 +49,7 @@ func (f *inotifyProcess) handleEvents(ctx context.Context, watcher dirWatcher) e
 		return false
 	}
 
-	cache := map[string]notify.Event{}
+	cache := map[cachedEventKey]struct{}{}
 
 	for {
 		select {
@@ -84,8 +89,8 @@ func (f *inotifyProcess) handleEvents(ctx context.Context, watcher dirWatcher) e
 
 			// rate limit, handle at most 50 unique items every 500 ms
 			if now.Sub(last) < time.Millisecond*500 {
-				if event, ok := cache[ev.path]; ok && event != ev.Event {
-					log.Tracef("inotify %s event for %s already handled in last 500 ms", event.String(), ev.path)
+				if _, ok := cache[cachedEventKey{path: ev.path, Event: ev.Event}]; ok {
+					log.Tracef("inotify %s event for %s already handled in last 500 ms", ev.Event.String(), ev.path)
 					continue // handled, ignore
 				}
 				if len(cache) > 50 {
@@ -95,12 +100,12 @@ func (f *inotifyProcess) handleEvents(ctx context.Context, watcher dirWatcher) e
 			} else {
 				log.Trace("resetting inotify event cache")
 				last = now
-				cache = map[string]notify.Event{} // >500ms, reset unique cache
+				cache = map[cachedEventKey]struct{}{} // >500ms, reset unique cache
 			}
 
 			// cache current event
 			log.Tracef("caching inotify event for %s", ev.path)
-			cache[ev.path] = ev.Event
+			cache[cachedEventKey{path: ev.path, Event: ev.Event}] = struct{}{}
 
 			// validate that file exists
 			if err := f.guest.RunQuiet("stat", ev.path); err != nil {
