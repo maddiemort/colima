@@ -77,21 +77,26 @@ func (f *inotifyProcess) handleEvents(ctx context.Context, watcher dirWatcher) e
 		// handle modification events
 		case ev := <-mod:
 			now := time.Now()
+			log.Tracef("handling inotify event for %s", ev.path)
 
 			// rate limit, handle at most 50 unique items every 500 ms
 			if now.Sub(last) < time.Millisecond*500 {
 				if _, ok := cache[ev.path]; ok {
+					log.Tracef("inotify event for %s already handled in last 500 ms", ev.path)
 					continue // handled, ignore
 				}
 				if len(cache) > 50 {
+					log.Tracef("cache contains %d items, skipping notify event for %s", len(cache), ev.path)
 					continue
 				}
 			} else {
+				log.Trace("resetting inotify event cache")
 				last = now
 				cache = map[string]struct{}{} // >500ms, reset unique cache
 			}
 
 			// cache current event
+			log.Tracef("caching inotify event for %s", ev.path)
 			cache[ev.path] = struct{}{}
 
 			// validate that file exists
