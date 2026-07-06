@@ -66,7 +66,7 @@ func (f *inotifyProcess) Start(ctx context.Context) error {
 	if !ok {
 		return fmt.Errorf("args missing in context")
 	}
-	f.vmVols = omitChildrenDirectories(args.Dirs)
+	f.vmVols = args.Dirs
 
 	f.guest = args.GuestActions
 	f.runtime = args.Runtime
