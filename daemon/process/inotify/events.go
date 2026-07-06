@@ -5,14 +5,22 @@ import (
 	"fmt"
 	"io/fs"
 	"time"
+
+	"github.com/rjeczalik/notify"
 )
 
 type modEvent struct {
 	path string // filename
+	notify.Event
 	fs.FileMode
 }
 
 func (m modEvent) Mode() string { return fmt.Sprintf("%o", m.FileMode) }
+
+type cachedEventKey struct {
+	path string
+	notify.Event
+}
 
 func (f *inotifyProcess) handleEvents(ctx context.Context, watcher dirWatcher) error {
 	log := f.log
@@ -41,7 +49,7 @@ func (f *inotifyProcess) handleEvents(ctx context.Context, watcher dirWatcher) e
 		return false
 	}
 
-	cache := map[string]struct{}{}
+	cache := map[cachedEventKey]struct{}{}
 
 	for {
 		select {
@@ -77,22 +85,27 @@ func (f *inotifyProcess) handleEvents(ctx context.Context, watcher dirWatcher) e
 		// handle modification events
 		case ev := <-mod:
 			now := time.Now()
+			log.Tracef("handling inotify event for %s", ev.path)
 
 			// rate limit, handle at most 50 unique items every 500 ms
 			if now.Sub(last) < time.Millisecond*500 {
-				if _, ok := cache[ev.path]; ok {
+				if _, ok := cache[cachedEventKey{path: ev.path, Event: ev.Event}]; ok {
+					log.Tracef("inotify %s event for %s already handled in last 500 ms", ev.Event.String(), ev.path)
 					continue // handled, ignore
 				}
 				if len(cache) > 50 {
+					log.Tracef("cache contains %d items, skipping notify event for %s", len(cache), ev.path)
 					continue
 				}
 			} else {
+				log.Trace("resetting inotify event cache")
 				last = now
-				cache = map[string]struct{}{} // >500ms, reset unique cache
+				cache = map[cachedEventKey]struct{}{} // >500ms, reset unique cache
 			}
 
 			// cache current event
-			cache[ev.path] = struct{}{}
+			log.Tracef("caching inotify event for %s", ev.path)
+			cache[cachedEventKey{path: ev.path, Event: ev.Event}] = struct{}{}
 
 			// validate that file exists
 			if err := f.guest.RunQuiet("stat", ev.path); err != nil {
@@ -100,9 +113,16 @@ func (f *inotifyProcess) handleEvents(ctx context.Context, watcher dirWatcher) e
 				continue
 			}
 
-			log.Infof("syncing inotify event for %s ", ev.path)
-			if err := f.guest.RunQuiet("sudo", "/bin/chmod", ev.Mode(), ev.path); err != nil {
-				log.Trace(fmt.Errorf("error syncing inotify event: %w", err))
+			log.Infof("syncing inotify %s event for %s ", ev.Event.String(), ev.path)
+			switch ev.Event {
+			case notify.Write:
+				if err := f.guest.RunQuiet("touch", "-mr", ev.path, ev.path); err != nil {
+					log.Trace(fmt.Errorf("error syncing inotify event: %w", err))
+				}
+			default:
+				if err := f.guest.RunQuiet("sudo", "/bin/chmod", ev.Mode(), ev.path); err != nil {
+					log.Trace(fmt.Errorf("error syncing inotify event: %w", err))
+				}
 			}
 		}
 	}
